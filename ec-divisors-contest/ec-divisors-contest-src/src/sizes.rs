@@ -1,4 +1,3 @@
-
 // f(x,y) = ax + by + c
 // f(x,y) = A(x) - yB(x)
 // A(x) = ax + c
@@ -29,29 +28,27 @@
 // deg(A) = 4, deg(B) = 3
 
 #[cfg(test)]
-fn sizes(a:usize,b:usize)->(usize,usize){
+fn sizes(a: usize, b: usize) -> (usize, usize) {
     // A = max (A1 + A2, B1 + B2 + 3)
     // B = max (A1 + B2, A2 + B1)
-    let a1 = (a * 2).max(b*2+3);
+    let a1 = (a * 2).max(b * 2 + 3);
     let b1 = a + b;
-    
+
     // a2 = 1, b2 = 0
     let a = (a1 + 1).max(b1 + 0 + 3);
     let b = (a1 + 0).max(1 + b1);
 
-    (a-2,b-2)
+    (a - 2, b - 2)
 }
 
 #[test]
-fn print_sizes(){
+fn print_sizes() {
     let mut a = 1;
-    let mut b=0;
-    for _ in 0..20{
+    let mut b = 0;
+    for _ in 0..20 {
         let res = sizes(a, b);
         a = res.0;
         b = res.1;
-        println!("a: {}, b: {}",a,b);
+        println!("a: {}, b: {}", a, b);
     }
 }
-
-
