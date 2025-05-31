@@ -8,6 +8,7 @@ use std_shims::{vec, vec::Vec};
 
 use subtle::{Choice, ConstantTimeEq, ConstantTimeGreater, ConditionallySelectable};
 use zeroize::{Zeroize, ZeroizeOnDrop};
+mod sizes;
 
 use group::{
   ff::{Field, PrimeField, PrimeFieldBits},
