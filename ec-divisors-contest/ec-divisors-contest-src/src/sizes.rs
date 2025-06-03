@@ -5,6 +5,9 @@
 // f1 * f2 = A1A2 - y(A1B2 + A2B1) + y^2 B1B2
 // f1 * f2 = A1A2 - y(A1B2 + A2B1) + (x^3 + ax + b) B1B2
 //
+// (A1+B1)(A2+B2)
+// A1(A2+B2) + B1(A2+B2)
+// A1A2 + A1B2 + B1A2 + B1B2
 // deg(A) = max (deg(A1) + deg(A2), deg(B1) + deg(B2) + 3)
 // deg(B) = max (deg(A1) + deg(B2), deg(A2) + deg(B1))
 //

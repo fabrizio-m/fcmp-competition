@@ -8,6 +8,7 @@ use std_shims::{vec, vec::Vec};
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater};
 use zeroize::{Zeroize, ZeroizeOnDrop};
+mod divisor;
 mod sizes;
 
 use group::{
