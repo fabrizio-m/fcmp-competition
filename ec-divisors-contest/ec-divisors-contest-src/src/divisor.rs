@@ -4,7 +4,8 @@ use std::rc::Rc;
 
 /// Divisor of form f(x,y) = A(x) - yB(x), with A and B
 /// represented as enough evaluations for their degree.
-struct Divisor<F: PrimeField> {
+#[derive(Debug, Clone)]
+pub struct Divisor<F: PrimeField> {
     a: Evals<F>,
     b: Evals<F>,
     // to substitute y^2
@@ -13,14 +14,14 @@ struct Divisor<F: PrimeField> {
 
 /// Represented as coefficients as it can be efficiently evaluated
 /// in O(n) additions.
-struct SmallDivisor<F: PrimeField> {
+pub struct SmallDivisor<F: PrimeField> {
     // (a,b) for ax + b
     a: (F, F),
     b: F,
 }
 
 impl<F: PrimeField> Divisor<F> {
-    fn ab(&self, i: usize) -> (F, F) {
+    pub fn ab(&self, i: usize) -> (F, F) {
         let a = self.a.evals[i];
         let b = self.b.evals[i];
         (a, b)
@@ -61,7 +62,7 @@ impl<F: PrimeField> Divisor<F> {
         self / denominator
     }
 
-    fn merge(divisors: [Self; 2], small: SmallDivisor<F>, denom: (F, F)) -> Self {
+    pub fn merge(divisors: [Self; 2], small: SmallDivisor<F>, denom: (F, F)) -> Self {
         let [d1, d2] = divisors;
         let numerator = d1 * &d2;
         //TODO: second operand can be reused for scratch space
@@ -69,22 +70,71 @@ impl<F: PrimeField> Divisor<F> {
         let (x1, x2) = denom;
         numerator.remove_diff(x1, x2)
     }
+
+    pub fn from_small(small: SmallDivisor<F>, modulus: Rc<Evals<F>>) -> Self {
+        let SmallDivisor { a, b } = small;
+        let evals = modulus.len();
+        let a = Evals::from_degree_1(a.0, a.1, evals);
+        let b = Evals::degree_0(b, evals);
+        Self { a, b, modulus }
+    }
+
+    pub fn compute_modulus(a: F, b: F, evals: usize) -> Rc<Evals<F>> {
+        // x^3 * ax + b
+        let count = evals;
+        let mut evals = Vec::with_capacity(evals);
+        // let mut last = b;
+
+        for i in 0..count {
+            //evals.push(last);
+            let x = F::from(i as u64);
+            let cube = x.double() * x;
+            let ax = x * a;
+            evals.push(cube + ax + b);
+        }
+        Rc::new(Evals::new(evals, 3))
+    }
 }
 
 impl<F: PrimeField> SmallDivisor<F> {
-    fn new(a: (F, F), b: F) -> Self {
+    pub fn new(a: (F, F), b: F) -> Self {
         Self { a, b }
     }
 }
 
-struct Evals<F: PrimeField> {
+#[derive(Debug, Clone)]
+pub struct Evals<F: PrimeField> {
     evals: Vec<F>,
     degree: usize,
 }
 
 impl<F: PrimeField> Evals<F> {
+    fn new(evals: Vec<F>, degree: usize) -> Self {
+        Self { evals, degree }
+    }
+
     fn len(&self) -> usize {
         self.evals.len()
+    }
+
+    fn from_degree_1(coeff: F, constant: F, evals: usize) -> Self {
+        let count = evals;
+        let mut evals = Vec::with_capacity(evals);
+        if count == 0 {
+            return Evals { evals, degree: 1 };
+        }
+        // assmuning domain 0..n
+        let mut last_eval = constant;
+        for _ in 0..count {
+            evals.push(last_eval);
+            last_eval += coeff;
+        }
+        Self { evals, degree: 1 }
+    }
+
+    fn degree_0(coeff: F, evals: usize) -> Self {
+        let evals = vec![coeff; evals];
+        Evals { evals, degree: 0 }
     }
 }
 
