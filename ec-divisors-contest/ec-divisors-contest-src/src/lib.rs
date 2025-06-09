@@ -4,6 +4,7 @@
 #![deny(missing_docs)]
 #![allow(non_snake_case)]
 
+use divisor::{Divisor, SmallDivisor};
 use std_shims::{vec, vec::Vec};
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater};
@@ -172,6 +173,22 @@ fn line<C: DivisorCurve>(a: C, b: C) -> Poly<C::FieldElement> {
     }
 }
 
+fn poly_to_div<F: PrimeField + Zeroize>(poly: Poly<F>) -> SmallDivisor<F> {
+    let Poly {
+        ref y_coefficients,
+        ref yx_coefficients,
+        ref x_coefficients,
+        zero_coefficient,
+    } = poly;
+    assert_eq!(y_coefficients.len(), 1);
+    assert_eq!(yx_coefficients.len(), 0);
+    assert_eq!(x_coefficients.len(), 1);
+    let a = (x_coefficients[0], zero_coefficient);
+    let b = y_coefficients[0];
+    let divisor = SmallDivisor::new(a, b);
+    divisor
+}
+
 /// Create a divisor interpolating the following points.
 ///
 /// Returns None if:
@@ -276,6 +293,68 @@ pub fn new_divisor<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldElement
     let mut divisor = divs.remove(0).2;
     trim(&mut divisor, points_len);
     Some(divisor)
+}
+
+/// div 2
+pub fn new_divisor2<C: DivisorCurve>(points: &[C]) -> Divisor<C::FieldElement> {
+    let mut invalid_args = (points.len() & (!1)).ct_eq(&0);
+    // The points don't sum to the point at infinity
+    invalid_args |= !points.iter().sum::<C>().is_identity();
+    // A point was the point at identity
+    for point in points {
+        invalid_args |= point.is_identity();
+    }
+    if bool::from(invalid_args) {
+        // None?;
+        panic!();
+    }
+
+    let evals = 8;
+    let modulus = Divisor::compute_modulus(C::a(), C::b(), evals);
+
+    // Create the initial set of divisors
+    let mut divs = vec![];
+    let mut iter = points.iter().copied();
+    // let mut first_line = true;
+    while let Some(a) = iter.next() {
+        let b = iter.next();
+
+        // Draw the line between those points
+        // These unwraps are branching on the length of the iterator, not violating the constant-time
+        // priorites desired
+        let line = line::<C>(a, b.unwrap_or(-a));
+
+        let line: SmallDivisor<C::FieldElement> = poly_to_div(line);
+        let line: Divisor<C::FieldElement> = Divisor::from_small(line, modulus.clone());
+        divs.push((2, a + b.unwrap_or(C::identity()), line));
+    }
+
+    // Pair them off until only one remains
+    while divs.len() > 1 {
+        let mut next_divs = vec![];
+        // If there's an odd amount of divisors, carry the odd one out to the next iteration
+        if (divs.len() % 2) == 1 {
+            next_divs.push(divs.pop().unwrap());
+        }
+
+        while let Some((a_points, a, a_div)) = divs.pop() {
+            let (b_points, b, b_div) = divs.pop().unwrap();
+            let points = a_points + b_points;
+
+            // Merge the two divisors
+            // line connecting both divisors
+            let line = line::<C>(a, b);
+            let line = poly_to_div(line);
+            let denom = (C::to_xy(a).unwrap().0, C::to_xy(b).unwrap().0);
+            let merged = Divisor::merge([a_div, b_div], line, denom);
+            next_divs.push((points, a + b, merged));
+        }
+
+        divs = next_divs;
+    }
+
+    let divisor = divs.remove(0).2;
+    divisor
 }
 
 /// The decomposition of a scalar.
