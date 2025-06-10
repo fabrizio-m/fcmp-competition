@@ -9,6 +9,7 @@ use std_shims::{vec, vec::Vec};
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater};
 use zeroize::{Zeroize, ZeroizeOnDrop};
+mod barycentric;
 mod divisor;
 mod sizes;
 
