@@ -1,3 +1,4 @@
+use crate::barycentric::Weights;
 use core::ops::{Div, Mul};
 use ff::PrimeField;
 use std::rc::Rc;
@@ -94,6 +95,12 @@ impl<F: PrimeField> Divisor<F> {
         }
         Rc::new(Evals::new(evals, 3))
     }
+    /// Returns [a,b] as coefficient vecs.
+    pub fn interpolate(self) -> [Vec<F>; 2] {
+        let a = self.a.interpolate();
+        let b = self.b.interpolate();
+        [a, b]
+    }
 }
 
 impl<F: PrimeField> SmallDivisor<F> {
@@ -109,7 +116,7 @@ pub struct Evals<F: PrimeField> {
 }
 
 impl<F: PrimeField> Evals<F> {
-    fn new(evals: Vec<F>, degree: usize) -> Self {
+    pub fn new(evals: Vec<F>, degree: usize) -> Self {
         Self { evals, degree }
     }
 
@@ -136,64 +143,17 @@ impl<F: PrimeField> Evals<F> {
         let evals = vec![coeff; evals];
         Evals { evals, degree: 0 }
     }
-}
 
-/*
-impl<F: PrimeField> Add<&Self> for Evals<F> {
-    type Output = Self;
-
-    fn add(self, rhs: &Self) -> Self::Output {
-        debug_assert_eq!(self.evals.len(), rhs.evals.len());
+    /// interpolate into a vector of coefficients.
+    /// O(n^2).
+    pub fn interpolate(self) -> Vec<F> {
         let Self { mut evals, degree } = self;
-        let degree = degree.max(rhs.degree);
-        for e in evals.iter_mut().zip(rhs.evals.iter()) {
-            let (l, r) = e;
-            *l += r;
-        }
-        Self { evals, degree }
+        evals.truncate(degree + 1);
+        let weights = Weights::new(evals.len());
+        weights.interpolate(evals).inner()
     }
 }
 
-impl<F: PrimeField> Mul<&Self> for Evals<F> {
-    type Output = Self;
-
-    fn mul(self, rhs: &Self) -> Self::Output {
-        debug_assert_eq!(self.evals.len(), rhs.evals.len());
-        let Self { mut evals, degree } = self;
-        let degree = degree + rhs.degree;
-        debug_assert!(evals.len() > degree);
-        for e in evals.iter_mut().zip(rhs.evals.iter()) {
-            let (l, r) = e;
-            *l *= r;
-        }
-        Self { evals, degree }
-    }
-}
-
-impl<F: PrimeField> Add<F> for Evals<F> {
-    type Output = Self;
-
-    fn add(mut self, rhs: F) -> Self::Output {
-        for eval in self.evals.iter_mut() {
-            *eval += rhs;
-        }
-        self
-    }
-}
-
-
-impl<F: PrimeField> Mul<F> for Evals<F> {
-    type Output = Self;
-
-    fn mul(mut self, rhs: F) -> Self::Output {
-        for eval in self.evals.iter_mut() {
-            *eval *= rhs;
-        }
-        self
-    }
-}
-
-*/
 impl<F: PrimeField> Mul<&Self> for Divisor<F> {
     type Output = Self;
 
@@ -252,8 +212,8 @@ impl<F: PrimeField> Mul<SmallDivisor<F>> for Divisor<F> {
             *b1 = b;
         }
         let da = self.a.degree;
-        let db = self.a.degree;
-        self.a.degree = da.max(db + 3);
+        let db = self.b.degree;
+        self.a.degree = (da + 1).max(db + 3);
         self.b.degree = da.max(1 + db);
         self
     }
