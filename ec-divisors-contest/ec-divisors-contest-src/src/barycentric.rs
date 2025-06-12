@@ -10,9 +10,10 @@ pub struct Weights<F: Field> {
 }
 
 #[derive(Debug, Clone)]
-struct Coeffs<F>(Vec<F>);
+pub struct Coeffs<F>(Vec<F>);
 
 impl<F: Field> Coeffs<F> {
+    #[cfg(test)]
     fn eval(&self, x: F) -> F {
         self.0
             .iter()
@@ -50,6 +51,10 @@ impl<F: Field> Coeffs<F> {
             coeff.mul_assign(scalar);
         }
     }
+
+    pub fn inner(self) -> Vec<F> {
+        self.0
+    }
 }
 
 impl<F: Field> AddAssign<&Self> for Coeffs<F> {
@@ -67,7 +72,6 @@ impl<F: PrimeField> Weights<F> {
         let diffs = successors(start, |prev| Some(*prev - F::ONE));
         let diff_products = diffs.scan(F::ONE, |product, diff| {
             *product *= diff;
-            println!("p: {:?}", product);
             Some(*product)
         });
         let mut diff_products: Vec<F> = diff_products.take(domain_size - 1).collect();
@@ -78,17 +82,14 @@ impl<F: PrimeField> Weights<F> {
         let diffs = successors(Some(F::ONE), |prev| Some(*prev + F::ONE));
         let diff_products_left = diffs.scan(F::ONE, |product, diff| {
             *product *= diff;
-            println!("lp: {:?}", product);
             Some(*product)
         });
         let diff_products_left = [F::ONE].into_iter().chain(diff_products_left);
 
-        println!("right: {:?}", diff_products_right);
         let weights: Vec<F> = diff_products_left
             .zip(diff_products_right)
             .map(|(left, right)| left * right)
             .collect();
-        println!("weight0: {:?}", weights[0]);
         Self::from_weights(weights)
     }
 
@@ -126,7 +127,7 @@ impl<F: PrimeField> Weights<F> {
         li
     }
 
-    fn interpolate(&self, evals: Vec<F>) -> Coeffs<F> {
+    pub fn interpolate(&self, evals: Vec<F>) -> Coeffs<F> {
         assert_eq!(self.weights.len(), evals.len());
         let len = evals.len();
 
