@@ -296,6 +296,26 @@ pub fn new_divisor<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldElement
     Some(divisor)
 }
 
+/// Convert divisor from univariate to bivariate representation.
+pub fn divisor_to_poly<C: DivisorCurve>(
+    divisor: Divisor<C::FieldElement>,
+) -> Poly<C::FieldElement> {
+    let [mut a, mut b] = divisor.interpolate();
+    let zero_coefficient = a[0];
+    a.remove(0);
+    let x_coefficients = a;
+    let y_coefficients = vec![b[0]];
+    b.remove(0);
+    let yx_coefficients = vec![b];
+
+    Poly {
+        y_coefficients,
+        yx_coefficients,
+        x_coefficients,
+        zero_coefficient,
+    }
+}
+
 /// div 2
 pub fn new_divisor2<C: DivisorCurve>(points: &[C]) -> Divisor<C::FieldElement> {
     let mut invalid_args = (points.len() & (!1)).ct_eq(&0);
