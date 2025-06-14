@@ -201,7 +201,7 @@ fn poly_to_div<F: PrimeField + Zeroize>(poly: Poly<F>) -> SmallDivisor<F> {
 /// If the arguments were valid, this function executes in an amount of time constant to the amount
 /// of points.
 #[allow(clippy::new_ret_no_self)]
-pub fn new_divisor<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldElement>> {
+pub fn new_divisor_old<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldElement>> {
     // No points were passed in, this is the point at infinity, or the single point isn't infinity
     // and accordingly doesn't sum to infinity. All three cause us to return None
     // Checks a bit other than the first bit is set, meaning this is >= 2
@@ -329,7 +329,7 @@ pub fn precompute<F: PrimeField>() -> Precomp<F> {
 }
 
 /// div 2
-pub fn new_divisor2<C: DivisorCurve>(
+pub fn new_divisor<C: DivisorCurve>(
     points: &[C],
     interpolaror: &Interpolator<C::FieldElement>,
 ) -> Poly<C::FieldElement> {
@@ -607,7 +607,7 @@ impl<F: Zeroize + PrimeFieldBits> ScalarDecomposition<F> {
 
         // Create a divisor out of the points
         // let res = new_divisor(&divisor_points).unwrap();
-        let res = new_divisor2(&divisor_points, interpolator);
+        let res = new_divisor(&divisor_points, interpolator);
         divisor_points.zeroize();
         res
     }

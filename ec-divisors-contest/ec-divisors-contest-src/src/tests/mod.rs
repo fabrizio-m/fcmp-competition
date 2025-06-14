@@ -1,17 +1,17 @@
-use rand_core::OsRng;
-
+use crate::{barycentric::Interpolator, new_divisor, precompute, DivisorCurve, Poly};
 use dalek_ff_group::EdwardsPoint;
 use group::{ff::Field, Group};
 use pasta_curves::{Ep, Eq};
-
-use crate::{new_divisor, DivisorCurve, Poly};
+use rand_core::OsRng;
 
 mod poly;
 
+type Precomp<C> = Interpolator<<C as DivisorCurve>::FieldElement>;
+
 // Equation 4 in the security proofs
-fn check_divisor<C: DivisorCurve>(points: Vec<C>) {
+fn check_divisor<C: DivisorCurve>(points: Vec<C>, precomputation: &Precomp<C>) {
     // Create the divisor
-    let divisor = new_divisor::<C>(&points).unwrap();
+    let divisor = new_divisor::<C>(&points, precomputation);
     let eval = |c| {
         let (x, y) = C::to_xy(c).unwrap();
         divisor.eval(x, y)
@@ -32,6 +32,7 @@ fn check_divisor<C: DivisorCurve>(points: Vec<C>) {
 }
 
 fn test_divisor<C: DivisorCurve>() {
+    let precomputation = precompute();
     for i in 1..=255 {
         println!("Test iteration {i}");
 
@@ -44,10 +45,10 @@ fn test_divisor<C: DivisorCurve>() {
         println!("Points {}", points.len());
 
         // Perform the original check
-        check_divisor(points.clone());
+        check_divisor(points.clone(), &precomputation);
 
         // Create the divisor
-        let divisor = new_divisor::<C>(&points).unwrap();
+        let divisor = new_divisor::<C>(&points, &precomputation);
 
         // For a divisor interpolating 256 points, as one does when interpreting a 255-bit discrete log
         // with the result of its scalar multiplication against a fixed generator, the lengths of the
@@ -145,13 +146,15 @@ fn test_divisor<C: DivisorCurve>() {
 }
 
 fn test_same_point<C: DivisorCurve>() {
+    let precomputation = precompute();
     let mut points = vec![C::random(&mut OsRng)];
     points.push(points[0]);
     points.push(-points.iter().sum::<C>());
-    check_divisor(points);
+    check_divisor(points, &precomputation);
 }
 
 fn test_subset_sum_to_infinity<C: DivisorCurve>() {
+    let precomputation = precompute();
     // Internally, a binary tree algorithm is used
     // This executes the first pass to end up with [0, 0] for further reductions
     {
@@ -161,7 +164,7 @@ fn test_subset_sum_to_infinity<C: DivisorCurve>() {
         let next = C::random(&mut OsRng);
         points.push(next);
         points.push(-next);
-        check_divisor(points);
+        check_divisor(points, &precomputation);
     }
 
     // This executes the first pass to end up with [0, X, -X, 0]
@@ -180,7 +183,7 @@ fn test_subset_sum_to_infinity<C: DivisorCurve>() {
         let next = C::random(&mut OsRng);
         points.push(next);
         points.push(-next);
-        check_divisor(points);
+        check_divisor(points, &precomputation);
     }
 }
 
@@ -238,3 +241,59 @@ fn test_divisor_ed25519() {
     test_subset_sum_to_infinity::<EdwardsPoint>();
     test_divisor::<EdwardsPoint>();
 }
+
+/*fn divisor2<C: DivisorCurve>() {
+    let n = 2;
+    // Select points
+    let start_point = C::generator();
+    let mut points = vec![start_point];
+
+    for i in 0..n {
+        let point = points[i].double();
+        points.push(point);
+    }
+    points.push(-points.iter().sum::<C>());
+    println!("Points {}", points.len());
+
+    // Perform the original check
+    //check_divisor(points.clone());
+
+    //TODO: Create divisor with my method and compare
+    // Create the divisor
+    let divisor = new_divisor::<C>(&points).unwrap();
+    // println!("old:\n{:#?}", divisor);
+    let divisor2 = new_divisor2::<C>(&points);
+    // println!("new:\n{:#?}", divisor2);
+    let one = C::FieldElement::ONE;
+    let zero = C::FieldElement::ZERO;
+    println!("old at (0,1): {:?}", divisor.eval(zero, one));
+    let (a, b) = divisor2.ab(0);
+    println!("new at (0,1): {:?}", a + b);
+    let divisor2 = divisor_to_poly::<C>(divisor2);
+    // println!("new:\n{:#?}", divisor2);
+
+    let divisor = divisor;
+
+    // For a divisor interpolating 256 points, as one does when interpreting a 255-bit discrete log
+    // with the result of its scalar multiplication against a fixed generator, the lengths of the
+    // yx/x coefficients shouldn't supersede the following bounds
+    assert!((divisor.yx_coefficients.first().unwrap_or(&vec![]).len()) <= 126);
+    assert!((divisor.x_coefficients.len() - 1) <= 127);
+    assert!(
+        (1 + divisor.yx_coefficients.first().unwrap_or(&vec![]).len()
+            + (divisor.x_coefficients.len() - 1)
+            + 1)
+            <= 255
+    );
+
+    // Decide challgenges
+    let c0 = C::random(&mut OsRng);
+    let c1 = C::random(&mut OsRng);
+    let c2 = -(c0 + c1);
+    let (slope, intercept) = crate::slope_intercept::<C>(c0, c1);
+}
+
+#[test]
+fn test_divisor2() {
+    divisor2::<EdwardsPoint>();
+}*/
