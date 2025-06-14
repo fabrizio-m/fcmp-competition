@@ -188,7 +188,6 @@ fn interpolation() {
 pub struct Interpolator<F: Field> {
     /// maximal degree expected
     degree: usize,
-    weights: Weights<F>,
     lagrange_polys: Vec<Coeffs<F>>,
 }
 
@@ -204,7 +203,6 @@ impl<F: PrimeField> Interpolator<F> {
         }
         Self {
             degree,
-            weights,
             lagrange_polys,
         }
     }
