@@ -4,6 +4,7 @@
 #![deny(missing_docs)]
 #![allow(non_snake_case)]
 
+use barycentric::Interpolator;
 use divisor::{Divisor, SmallDivisor};
 use std_shims::{vec, vec::Vec};
 
@@ -296,11 +297,14 @@ pub fn new_divisor<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldElement
     Some(divisor)
 }
 
+const EVALS: usize = 130;
+
 /// Convert divisor from univariate to bivariate representation.
 pub fn divisor_to_poly<C: DivisorCurve>(
     divisor: Divisor<C::FieldElement>,
+    interpolator: &Interpolator<C::FieldElement>,
 ) -> Poly<C::FieldElement> {
-    let [mut a, mut b] = divisor.interpolate();
+    let [mut a, mut b] = divisor.interpolate(interpolator);
     let zero_coefficient = a[0];
     a.remove(0);
     let x_coefficients = a;
@@ -316,8 +320,19 @@ pub fn divisor_to_poly<C: DivisorCurve>(
     }
 }
 
+/// Necessary values for optimal interpolation.
+pub type Precomp<F> = Interpolator<F>;
+
+/// Precomputes necessary values for optimal interpolation.
+pub fn precompute<F: PrimeField>() -> Precomp<F> {
+    Interpolator::new(EVALS - 1)
+}
+
 /// div 2
-pub fn new_divisor2<C: DivisorCurve>(points: &[C]) -> Divisor<C::FieldElement> {
+pub fn new_divisor2<C: DivisorCurve>(
+    points: &[C],
+    interpolaror: &Interpolator<C::FieldElement>,
+) -> Poly<C::FieldElement> {
     let mut invalid_args = (points.len() & (!1)).ct_eq(&0);
     // The points don't sum to the point at infinity
     invalid_args |= !points.iter().sum::<C>().is_identity();
@@ -330,8 +345,7 @@ pub fn new_divisor2<C: DivisorCurve>(points: &[C]) -> Divisor<C::FieldElement> {
         panic!();
     }
 
-    let evals = 8;
-    let modulus = Divisor::compute_modulus(C::a(), C::b(), evals);
+    let modulus = Divisor::compute_modulus(C::a(), C::b(), EVALS);
 
     // Create the initial set of divisors
     let mut divs = vec![];
@@ -375,7 +389,7 @@ pub fn new_divisor2<C: DivisorCurve>(points: &[C]) -> Divisor<C::FieldElement> {
     }
 
     let divisor = divs.remove(0).2;
-    divisor
+    divisor_to_poly::<C>(divisor, interpolaror)
 }
 
 /// The decomposition of a scalar.
@@ -566,6 +580,7 @@ impl<F: Zeroize + PrimeFieldBits> ScalarDecomposition<F> {
     pub fn scalar_mul_divisor<C: Zeroize + DivisorCurve<Scalar = F>>(
         &self,
         mut generator: C,
+        interpolator: &Interpolator<C::FieldElement>,
     ) -> Poly<C::FieldElement> {
         // 1 is used for the resulting point, NUM_BITS is used for the decomposition, and then we store
         // one additional index in a usize for the points we shouldn't write at all (hence the +2)
@@ -591,7 +606,8 @@ impl<F: Zeroize + PrimeFieldBits> ScalarDecomposition<F> {
         }
 
         // Create a divisor out of the points
-        let res = new_divisor(&divisor_points).unwrap();
+        // let res = new_divisor(&divisor_points).unwrap();
+        let res = new_divisor2(&divisor_points, interpolator);
         divisor_points.zeroize();
         res
     }

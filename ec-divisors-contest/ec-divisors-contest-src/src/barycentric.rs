@@ -183,6 +183,48 @@ fn interpolation() {
     assert_eq!(evals, evals2);
 }
 
+/// All precomputation necessary to optimally interpolate polynomials
+/// of a given degree.
+pub struct Interpolator<F: Field> {
+    /// maximal degree expected
+    degree: usize,
+    weights: Weights<F>,
+    lagrange_polys: Vec<Coeffs<F>>,
+}
+
+impl<F: PrimeField> Interpolator<F> {
+    pub fn new(degree: usize) -> Self {
+        let domain_size = degree + 1;
+        let weights = Weights::new(domain_size);
+        let mut lagrange_polys = vec![];
+        let l = weights.l();
+        for i in 0..(domain_size) {
+            let li = weights.li(&l, i);
+            lagrange_polys.push(li);
+        }
+        Self {
+            degree,
+            weights,
+            lagrange_polys,
+        }
+    }
+
+    pub fn interpolate(&self, mut evals: Vec<F>) -> Coeffs<F> {
+        assert!(evals.len() > self.degree);
+        evals.truncate(self.degree + 1);
+        let len = evals.len();
+
+        let poly = vec![F::ZERO; len];
+        let mut poly = Coeffs(poly);
+        for i in 0..len {
+            let mut li = self.lagrange_polys[i].clone();
+            li.scale_in_place(evals[i]);
+            poly += &li;
+        }
+        poly
+    }
+}
+
 // (Xi - X0)(Xi - X1)(Xi - X2)(Xi - X3)
 // i = 1 (X1 - X0)(X1 - X2)(X1 - X3)
 // i = 2 (X2 - X0)(X2 - X1)(X2 - X3)

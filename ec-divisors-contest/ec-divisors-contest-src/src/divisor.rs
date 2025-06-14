@@ -1,4 +1,4 @@
-use crate::barycentric::Weights;
+use crate::barycentric::Interpolator;
 use core::ops::{Div, Mul};
 use ff::PrimeField;
 use std::rc::Rc;
@@ -96,9 +96,9 @@ impl<F: PrimeField> Divisor<F> {
         Rc::new(Evals::new(evals, 3))
     }
     /// Returns [a,b] as coefficient vecs.
-    pub fn interpolate(self) -> [Vec<F>; 2] {
-        let a = self.a.interpolate();
-        let b = self.b.interpolate();
+    pub fn interpolate(self, interpolator: &Interpolator<F>) -> [Vec<F>; 2] {
+        let a = self.a.interpolate(interpolator);
+        let b = self.b.interpolate(interpolator);
         [a, b]
     }
 }
@@ -146,11 +146,9 @@ impl<F: PrimeField> Evals<F> {
 
     /// interpolate into a vector of coefficients.
     /// O(n^2).
-    pub fn interpolate(self) -> Vec<F> {
-        let Self { mut evals, degree } = self;
-        evals.truncate(degree + 1);
-        let weights = Weights::new(evals.len());
-        weights.interpolate(evals).inner()
+    pub fn interpolate(self, interpolator: &Interpolator<F>) -> Vec<F> {
+        let Self { evals, .. } = self;
+        interpolator.interpolate(evals).inner()
     }
 }
 
