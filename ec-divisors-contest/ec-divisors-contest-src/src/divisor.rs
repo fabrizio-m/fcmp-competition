@@ -15,6 +15,7 @@ pub struct Divisor<F: PrimeField> {
 
 /// Represented as coefficients as it can be efficiently evaluated
 /// in O(n) additions.
+#[derive(Debug, Clone)]
 pub struct SmallDivisor<F: PrimeField> {
     // (a,b) for ax + b
     a: (F, F),
@@ -84,15 +85,15 @@ impl<F: PrimeField> Divisor<F> {
         // x^3 * ax + b
         let count = evals;
         let mut evals = Vec::with_capacity(evals);
-        // let mut last = b;
 
         for i in 0..count {
-            //evals.push(last);
             let x = F::from(i as u64);
-            let cube = x.double() * x;
+            let cube = x.square() * x;
             let ax = x * a;
             evals.push(cube + ax + b);
         }
+        assert_eq!(evals[0], b);
+        assert_eq!(evals[1], b + a + F::ONE);
         Rc::new(Evals::new(evals, 3))
     }
     /// Returns [a,b] as coefficient vecs.
