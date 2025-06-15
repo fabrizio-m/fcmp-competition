@@ -332,7 +332,7 @@ pub fn precompute<F: PrimeField>() -> Precomp<F> {
 pub fn new_divisor<C: DivisorCurve>(
     points: &[C],
     interpolaror: &Interpolator<C::FieldElement>,
-) -> Poly<C::FieldElement> {
+) -> Option<Poly<C::FieldElement>> {
     let mut invalid_args = (points.len() & (!1)).ct_eq(&0);
     // The points don't sum to the point at infinity
     invalid_args |= !points.iter().sum::<C>().is_identity();
@@ -341,9 +341,9 @@ pub fn new_divisor<C: DivisorCurve>(
         invalid_args |= point.is_identity();
     }
     if bool::from(invalid_args) {
-        // None?;
-        panic!();
+        None?;
     }
+    let points_len = points.len();
 
     let modulus = Divisor::compute_modulus(C::a(), C::b(), EVALS);
 
@@ -388,8 +388,34 @@ pub fn new_divisor<C: DivisorCurve>(
         divs = next_divs;
     }
 
+    let trim = |divisor: &mut Poly<_>, points_len: usize| {
+        // We should only be trimming divisors reduced by the modulus
+        debug_assert!(divisor.yx_coefficients.len() <= 1);
+        if divisor.yx_coefficients.len() == 1 {
+            let truncate_to = ((points_len + 1) / 2).saturating_sub(2);
+            #[cfg(debug_assertions)]
+            for p in truncate_to..divisor.yx_coefficients[0].len() {
+                debug_assert_eq!(
+                    divisor.yx_coefficients[0][p],
+                    <C::FieldElement as Field>::ZERO
+                );
+            }
+            divisor.yx_coefficients[0].truncate(truncate_to);
+        }
+        {
+            let truncate_to = points_len / 2;
+            #[cfg(debug_assertions)]
+            for p in truncate_to..divisor.x_coefficients.len() {
+                debug_assert_eq!(divisor.x_coefficients[p], <C::FieldElement as Field>::ZERO);
+            }
+            divisor.x_coefficients.truncate(truncate_to);
+        }
+    };
+
     let divisor = divs.remove(0).2;
-    divisor_to_poly::<C>(divisor, interpolaror)
+    let mut divisor = divisor_to_poly::<C>(divisor, interpolaror);
+    trim(&mut divisor, points_len);
+    Some(divisor)
 }
 
 /// The decomposition of a scalar.
@@ -607,7 +633,7 @@ impl<F: Zeroize + PrimeFieldBits> ScalarDecomposition<F> {
 
         // Create a divisor out of the points
         // let res = new_divisor(&divisor_points).unwrap();
-        let res = new_divisor(&divisor_points, interpolator);
+        let res = new_divisor(&divisor_points, interpolator).unwrap();
         divisor_points.zeroize();
         res
     }
