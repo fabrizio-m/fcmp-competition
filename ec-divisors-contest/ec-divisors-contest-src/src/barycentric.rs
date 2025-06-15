@@ -126,21 +126,6 @@ impl<F: PrimeField> Weights<F> {
         li.scale_in_place(weight);
         li
     }
-
-    pub fn interpolate(&self, evals: Vec<F>) -> Coeffs<F> {
-        assert_eq!(self.weights.len(), evals.len());
-        let len = evals.len();
-
-        let l = self.l();
-        let poly = vec![F::ZERO; len];
-        let mut poly = Coeffs(poly);
-        for i in 0..len {
-            let mut li = self.li(&l, i);
-            li.scale_in_place(evals[i]);
-            poly += &li;
-        }
-        poly
-    }
 }
 
 #[test]
@@ -168,9 +153,10 @@ fn interpolation() {
     let evals: Vec<Fp> = evals.into_iter().map(Fp::from).collect();
 
     let weights = Weights::new(5);
+    let interpolator = Interpolator::new(5);
     println!("weights: \n {:#?}", weights.weights);
 
-    let coeffs = weights.interpolate(evals.clone());
+    let coeffs = interpolator.interpolate(evals.clone());
     let mut evals2 = vec![];
     let l = weights.l();
     for i in 0..5 {
