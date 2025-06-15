@@ -201,7 +201,10 @@ fn poly_to_div<F: PrimeField + Zeroize>(poly: Poly<F>) -> SmallDivisor<F> {
 /// If the arguments were valid, this function executes in an amount of time constant to the amount
 /// of points.
 #[allow(clippy::new_ret_no_self)]
-pub fn new_divisor_old<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldElement>> {
+pub fn new_divisor<C: DivisorCurve>(
+    points: &[C],
+    interpolaror: &Interpolator<C::FieldElement>,
+) -> Option<Poly<C::FieldElement>> {
     // No points were passed in, this is the point at infinity, or the single point isn't infinity
     // and accordingly doesn't sum to infinity. All three cause us to return None
     // Checks a bit other than the first bit is set, meaning this is >= 2
@@ -218,6 +221,7 @@ pub fn new_divisor_old<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldEle
 
     let points_len = points.len();
 
+    let modulus = Divisor::compute_modulus(C::a(), C::b(), EVALS);
     // Create the initial set of divisors
     let mut divs = vec![];
     let mut iter = points.iter().copied();
@@ -227,14 +231,12 @@ pub fn new_divisor_old<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldEle
         // Draw the line between those points
         // These unwraps are branching on the length of the iterator, not violating the constant-time
         // priorites desired
-        divs.push((
-            2,
-            a + b.unwrap_or(C::identity()),
-            line::<C>(a, b.unwrap_or(-a)),
-        ));
-    }
+        let line = line::<C>(a, b.unwrap_or(-a));
+        let line: SmallDivisor<C::FieldElement> = poly_to_div(line);
+        let line: Divisor<C::FieldElement> = Divisor::from_small(line, modulus.clone());
 
-    let modulus = C::divisor_modulus();
+        divs.push((2, a + b.unwrap_or(C::identity()), line));
+    }
 
     // Our Poly algorithm is leaky and will create an excessive amount of y x**j and x**j
     // coefficients which are zero, yet as our implementation is constant time, still come with
@@ -276,23 +278,20 @@ pub fn new_divisor_old<C: DivisorCurve>(points: &[C]) -> Option<Poly<C::FieldEle
             let points = a_points + b_points;
 
             // Merge the two divisors
-            let numerator = a_div
-                .mul_mod(&b_div, &modulus)
-                .mul_mod(&line::<C>(a, b), &modulus);
-            let denominator = line::<C>(a, -a).mul_mod(&line::<C>(b, -b), &modulus);
-            let (mut q, r) = numerator.div_rem(&denominator);
-            debug_assert_eq!(r, Poly::zero());
-
-            trim(&mut q, 1 + points);
-
-            next_divs.push((points, a + b, q));
+            // line connecting both divisors
+            let line = line::<C>(a, b);
+            let line = poly_to_div(line);
+            let denom = (C::to_xy(a).unwrap().0, C::to_xy(b).unwrap().0);
+            let merged = Divisor::merge([a_div, b_div], line, denom);
+            next_divs.push((points, a + b, merged));
         }
 
         divs = next_divs;
     }
 
     // Return the unified divisor
-    let mut divisor = divs.remove(0).2;
+    let divisor = divs.remove(0).2;
+    let mut divisor = divisor_to_poly::<C>(divisor, interpolaror);
     trim(&mut divisor, points_len);
     Some(divisor)
 }
@@ -326,96 +325,6 @@ pub type Precomp<F> = Interpolator<F>;
 /// Precomputes necessary values for optimal interpolation.
 pub fn precompute<F: PrimeField>() -> Precomp<F> {
     Interpolator::new(EVALS - 1)
-}
-
-/// div 2
-pub fn new_divisor<C: DivisorCurve>(
-    points: &[C],
-    interpolaror: &Interpolator<C::FieldElement>,
-) -> Option<Poly<C::FieldElement>> {
-    let mut invalid_args = (points.len() & (!1)).ct_eq(&0);
-    // The points don't sum to the point at infinity
-    invalid_args |= !points.iter().sum::<C>().is_identity();
-    // A point was the point at identity
-    for point in points {
-        invalid_args |= point.is_identity();
-    }
-    if bool::from(invalid_args) {
-        None?;
-    }
-    let points_len = points.len();
-
-    let modulus = Divisor::compute_modulus(C::a(), C::b(), EVALS);
-
-    // Create the initial set of divisors
-    let mut divs = vec![];
-    let mut iter = points.iter().copied();
-    // let mut first_line = true;
-    while let Some(a) = iter.next() {
-        let b = iter.next();
-
-        // Draw the line between those points
-        // These unwraps are branching on the length of the iterator, not violating the constant-time
-        // priorites desired
-        let line = line::<C>(a, b.unwrap_or(-a));
-
-        let line: SmallDivisor<C::FieldElement> = poly_to_div(line);
-        let line: Divisor<C::FieldElement> = Divisor::from_small(line, modulus.clone());
-        divs.push((2, a + b.unwrap_or(C::identity()), line));
-    }
-
-    // Pair them off until only one remains
-    while divs.len() > 1 {
-        let mut next_divs = vec![];
-        // If there's an odd amount of divisors, carry the odd one out to the next iteration
-        if (divs.len() % 2) == 1 {
-            next_divs.push(divs.pop().unwrap());
-        }
-
-        while let Some((a_points, a, a_div)) = divs.pop() {
-            let (b_points, b, b_div) = divs.pop().unwrap();
-            let points = a_points + b_points;
-
-            // Merge the two divisors
-            // line connecting both divisors
-            let line = line::<C>(a, b);
-            let line = poly_to_div(line);
-            let denom = (C::to_xy(a).unwrap().0, C::to_xy(b).unwrap().0);
-            let merged = Divisor::merge([a_div, b_div], line, denom);
-            next_divs.push((points, a + b, merged));
-        }
-
-        divs = next_divs;
-    }
-
-    let trim = |divisor: &mut Poly<_>, points_len: usize| {
-        // We should only be trimming divisors reduced by the modulus
-        debug_assert!(divisor.yx_coefficients.len() <= 1);
-        if divisor.yx_coefficients.len() == 1 {
-            let truncate_to = ((points_len + 1) / 2).saturating_sub(2);
-            #[cfg(debug_assertions)]
-            for p in truncate_to..divisor.yx_coefficients[0].len() {
-                debug_assert_eq!(
-                    divisor.yx_coefficients[0][p],
-                    <C::FieldElement as Field>::ZERO
-                );
-            }
-            divisor.yx_coefficients[0].truncate(truncate_to);
-        }
-        {
-            let truncate_to = points_len / 2;
-            #[cfg(debug_assertions)]
-            for p in truncate_to..divisor.x_coefficients.len() {
-                debug_assert_eq!(divisor.x_coefficients[p], <C::FieldElement as Field>::ZERO);
-            }
-            divisor.x_coefficients.truncate(truncate_to);
-        }
-    };
-
-    let divisor = divs.remove(0).2;
-    let mut divisor = divisor_to_poly::<C>(divisor, interpolaror);
-    trim(&mut divisor, points_len);
-    Some(divisor)
 }
 
 /// The decomposition of a scalar.
