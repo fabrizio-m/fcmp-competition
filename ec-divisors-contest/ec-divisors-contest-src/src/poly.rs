@@ -381,6 +381,7 @@ impl<F: From<u64> + Zeroize + PrimeField> Poly<F> {
 
     /// Perform multiplication mod `modulus`.
     #[must_use]
+    #[allow(dead_code)]
     pub(crate) fn mul_mod(self, other: &Self, modulus: &Self) -> Self {
         (self * other) % modulus
     }
