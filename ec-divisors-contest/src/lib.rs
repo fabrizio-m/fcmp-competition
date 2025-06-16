@@ -1,8 +1,11 @@
 #![no_std]
 #![allow(static_mut_refs)]
 
-use ec_divisors::{DivisorCurve as DivisorCurveRef, ScalarDecomposition as ScalarDecompositionRef, Poly as PolyRef};
-use ec_divisors_contest_src::{DivisorCurve, ScalarDecomposition, Poly};
+use ec_divisors::{
+    DivisorCurve as DivisorCurveRef, Poly as PolyRef, ScalarDecomposition as ScalarDecompositionRef,
+};
+pub use ec_divisors_contest_src::{precompute, Precomp};
+use ec_divisors_contest_src::{DivisorCurve, Poly, ScalarDecomposition};
 
 use ciphersuite::{
     group::{ff::Field, Group},
@@ -23,20 +26,29 @@ pub fn check_init_ref(point: &EdwardsPoint, scalar: &Scalar) {
     let (_, _) = <EdwardsPoint as DivisorCurveRef>::to_xy(*point).unwrap();
 }
 
+type Pre = Precomp<FieldElement>;
+
 pub fn check_init_contest(point: &EdwardsPoint, scalar: &Scalar) {
     let scalar = ScalarDecomposition::new(*scalar).expect("failed scalar decomposition");
     let point = Zeroizing::new(*point * scalar.scalar());
     let (_, _) = <EdwardsPoint as DivisorCurve>::to_xy(*point).expect("zero scalar was decomposed");
 }
 
-pub fn run_bench_ref(point: &EdwardsPoint, scalar: &Scalar) -> (PolyRef<FieldElement>, ScalarDecompositionRef<Scalar>) {
+pub fn run_bench_ref(
+    point: &EdwardsPoint,
+    scalar: &Scalar,
+) -> (PolyRef<FieldElement>, ScalarDecompositionRef<Scalar>) {
     let scalar = ScalarDecompositionRef::new(*scalar).unwrap();
     (scalar.scalar_mul_divisor(*point), scalar)
 }
 
-pub fn run_bench_contest(point: &EdwardsPoint, scalar: &Scalar) -> (Poly<FieldElement>, ScalarDecomposition<Scalar>) {
+pub fn run_bench_contest(
+    point: &EdwardsPoint,
+    scalar: &Scalar,
+    precomputation: &Pre,
+) -> (Poly<FieldElement>, ScalarDecomposition<Scalar>) {
     let scalar = ScalarDecomposition::new(*scalar).unwrap();
-    (scalar.scalar_mul_divisor(*point), scalar)
+    (scalar.scalar_mul_divisor(*point, precomputation), scalar)
 }
 
 // For error: no global memory allocator found but one is required; link to std or add `#[global_allocator]` to a static item that implements the GlobalAlloc trait
@@ -46,7 +58,14 @@ pub fn run_bench_contest(point: &EdwardsPoint, scalar: &Scalar) -> (Poly<FieldEl
 static ALLOCATOR: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
 
 #[cfg(target_arch = "wasm32")]
-use core::{unimplemented, result::{Result, Result::{Ok, Err}}, panic::PanicInfo};
+use core::{
+    panic::PanicInfo,
+    result::{
+        Result,
+        Result::{Err, Ok},
+    },
+    unimplemented,
+};
 
 #[cfg(target_arch = "wasm32")]
 use getrandom::{register_custom_getrandom, Error};
@@ -145,6 +164,7 @@ pub extern "C" fn test_scalar_mul_divisor_ref() {
 pub extern "C" fn test_scalar_mul_divisor_contest() {
     core::hint::black_box(unsafe {
         let params = EC_DIVISORS_PARAMS.get().unwrap();
-        run_bench_contest(&params.point, &params.scalar);
+        let precomputation = precompute();
+        run_bench_contest(&params.point, &params.scalar, &precomputation);
     });
 }
