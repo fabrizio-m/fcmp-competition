@@ -2,6 +2,7 @@
 
 use core::{iter::successors, ops::AddAssign};
 use ff::{Field, PrimeField};
+use std_shims::{vec, vec::Vec};
 use subtle::CtOption;
 
 pub struct Weights<F: Field> {

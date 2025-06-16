@@ -1,7 +1,8 @@
 use crate::barycentric::Interpolator;
 use core::ops::{Div, Mul};
 use ff::PrimeField;
-use std::rc::Rc;
+use std_shims::alloc::rc::Rc;
+use std_shims::{vec, vec::Vec};
 
 /// Divisor of form f(x,y) = A(x) - yB(x), with A and B
 /// represented as enough evaluations for their degree.
