@@ -6,12 +6,14 @@
 
 use barycentric::Interpolator;
 use divisor::{Divisor, SmallDivisor};
+use inversion::BatchInverse;
 use std_shims::{vec, vec::Vec};
 
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 mod barycentric;
 mod divisor;
+mod inversion;
 mod sizes;
 
 use group::{
@@ -65,6 +67,17 @@ pub trait DivisorCurve: Group + ConstantTimeEq + ConditionallySelectable + Zeroi
     ///
     /// This function may run in time variable to if the point is the identity.
     fn to_xy(point: Self) -> Option<(Self::FieldElement, Self::FieldElement)>;
+    /// Like `to_xy`, but it may assume no point is the identity, which
+    /// must be ensured by the caller.
+    fn to_xy_batched(points: &[Self]) -> Vec<[Self::FieldElement; 2]> {
+        points
+            .iter()
+            .cloned()
+            .map(Self::to_xy)
+            .map(Option::unwrap)
+            .map(|(x, y)| [x, y])
+            .collect()
+    }
 }
 
 /// Calculate the slope and intercept between two points.
@@ -82,6 +95,39 @@ pub(crate) fn slope_intercept<C: DivisorCurve>(a: C, b: C) -> (C::FieldElement, 
     debug_assert!(bool::from((ay - (slope * ax) - intercept).is_zero()));
     debug_assert!(bool::from((by - (slope * bx) - intercept).is_zero()));
     (slope, intercept)
+}
+
+type Xy<C> = [<C as DivisorCurve>::FieldElement; 2];
+
+/// Computes all (slope, intercept) pairs, batching inverses..
+fn slopes<C: DivisorCurve>(a: Vec<Xy<C>>, b: Vec<C>) -> Vec<[C::FieldElement; 2]> {
+    assert_eq!(a.len(), b.len());
+    let b: Vec<Xy<C>> = C::to_xy_batched(&b);
+    let mut diffs: Vec<C::FieldElement> = a
+        .iter()
+        .zip(b.iter())
+        .map(|(a, b)| {
+            let (ax, bx) = (a[0], b[0]);
+            bx - ax
+        })
+        .collect();
+
+    BatchInverse::invert_slice(diffs.as_mut_slice());
+
+    a.into_iter()
+        .zip(b)
+        .zip(diffs)
+        .map(|((a, b), diff)| {
+            let [ax, ay] = a;
+            let [bx, by] = b;
+
+            let slope = (by - ay) * diff;
+            let intercept = by - (slope * bx);
+            debug_assert!(bool::from((ay - (slope * ax) - intercept).is_zero()));
+            debug_assert!(bool::from((by - (slope * bx) - intercept).is_zero()));
+            [slope, intercept]
+        })
+        .collect()
 }
 
 // The line interpolating two points.
@@ -175,6 +221,90 @@ fn line<C: DivisorCurve>(a: C, b: C) -> Poly<C::FieldElement> {
     }
 }
 
+/// Data required to compute lines and which can be computed optimally
+/// without batching, which is up to slope computation.
+/// Consists of `a` and `b` to computed the slope, and a few `Choice` to
+/// build the correct line.
+struct LineArgs<C: DivisorCurve> {
+    // a is the same value as the input, no need to return it.
+    //a: C,
+    b: C,
+    /// This line is always the same, only the Choice is needed.
+    both_are_identity: Choice,
+    /// the choice corrsponding to the case, and the constant coefficient
+    /// which is the only variable value of the line. As x and y are 0 and 1.
+    identity_or_inverse: (Choice, C::FieldElement),
+}
+
+/// First half of `line`, receives a.x to avoid computing to_xy().
+/// Computes up to before the call to `slope_intercept`.
+/// Relevant differences are commented,`line` is left as main documentation,
+/// as the general computation is the same, just batching friendly.
+fn line_args<C: DivisorCurve>(a: C, b: C, a_x: C::FieldElement) -> LineArgs<C> {
+    let a_is_identity = a.is_identity();
+    let b_is_identity = b.is_identity();
+
+    // This line is a constant that can be computed later
+    let both_are_identity = a_is_identity & b_is_identity;
+
+    let one_is_identity = a_is_identity | b_is_identity;
+
+    let additive_inverses = a.ct_eq(&-b);
+    let one_is_identity_or_additive_inverses = one_is_identity | additive_inverses;
+    let if_one_is_identity_or_additive_inverses = {
+        let a = <_>::conditional_select(&a, &C::generator(), both_are_identity);
+        // here we receive a.x already, thus we select between the 2 x and avoid
+        // call to `to_xy()`.
+        let (b_x, _) = C::to_xy(b).unwrap();
+        let x = <_>::conditional_select(&a_x, &b_x, a.is_identity());
+        // only this is needed to construct the line later.
+        -x
+    };
+
+    let a = <_>::conditional_select(&a, &C::generator(), a_is_identity);
+    let b = <_>::conditional_select(&b, &C::generator(), b_is_identity);
+    let b = <_>::conditional_select(&b, &a.double(), additive_inverses);
+    let b = <_>::conditional_select(&b, &-a.double(), a.ct_eq(&b));
+
+    let identity_or_inverse = (
+        one_is_identity_or_additive_inverses,
+        if_one_is_identity_or_additive_inverses,
+    );
+    LineArgs {
+        b,
+        both_are_identity,
+        identity_or_inverse,
+    }
+}
+
+/// Finish line from (slope, intercept) choices for the
+/// particular type of line.
+fn finish_line<F: PrimeField>(
+    slope: F,
+    intercept: F,
+    both_are_identity: Choice,
+    identity_or_inverse: (Choice, F),
+) -> SmallDivisor<F> {
+    // for case of different, non indentity points.
+    let mut res = SmallDivisor::new((-slope, -intercept), F::ONE);
+
+    let (one_is_identity_or_additive_inverses, constant_term) = identity_or_inverse;
+    // for the constant line case.
+    let if_one_is_identity_or_additive_inverses =
+        SmallDivisor::new((F::ONE, constant_term), F::ZERO);
+
+    res = <_>::conditional_select(
+        &res,
+        &if_one_is_identity_or_additive_inverses,
+        one_is_identity_or_additive_inverses,
+    );
+
+    // for the 0 + 0 case.
+    let if_both_are_identity = SmallDivisor::new((F::ZERO, F::ONE), F::ZERO);
+
+    <_>::conditional_select(&res, &if_both_are_identity, both_are_identity)
+}
+
 fn poly_to_div<F: PrimeField + Zeroize>(poly: Poly<F>) -> SmallDivisor<F> {
     let Poly {
         ref y_coefficients,
@@ -189,6 +319,79 @@ fn poly_to_div<F: PrimeField + Zeroize>(poly: Poly<F>) -> SmallDivisor<F> {
     let b = y_coefficients[0];
     let divisor = SmallDivisor::new(a, b);
     divisor
+}
+
+/// Computes all lines, batching expensive operations.
+fn lines<C: DivisorCurve>(points: &[C]) -> Vec<SmallDivisor<C::FieldElement>> {
+    // all the pairs of points from which lines will be created.
+    let pairs: Vec<[C; 2]> = {
+        let mut pairs: Vec<[C; 2]> = Vec::new();
+        let mut divs: Vec<C> = Vec::new();
+
+        let mut iter = points.iter().copied();
+        while let Some(a) = iter.next() {
+            let b = iter.next();
+            pairs.push([a, b.unwrap_or(-a)]);
+            divs.push(a + b.unwrap_or(C::identity()));
+        }
+
+        while divs.len() > 1 {
+            let mut next_divs = Vec::with_capacity(divs.len() / 2 + 1);
+            // If there's an odd amount of divisors, carry the odd one out to the next iteration
+            if (divs.len() % 2) == 1 {
+                next_divs.push(divs.pop().unwrap());
+            }
+
+            while let Some(a) = divs.pop() {
+                let b = divs.pop().unwrap();
+                pairs.push([a, b]);
+                next_divs.push(a + b);
+            }
+            divs = next_divs;
+        }
+        pairs
+    };
+
+    let gen = C::generator();
+    let a: Vec<C> = pairs
+        .iter()
+        .map(|[a, _]| {
+            let is_identity = a.is_identity();
+            <_>::conditional_select(a, &gen, is_identity)
+        })
+        .collect();
+    let a_xy: Vec<Xy<C>> = C::to_xy_batched(&a);
+
+    let (line_args, b): (Vec<_>, Vec<C>) = pairs
+        .into_iter()
+        .zip(&a_xy)
+        .map(|(pair, a_xy)| {
+            let [a_x, _] = a_xy;
+            let [a, b] = pair;
+            let args = line_args(a, b, *a_x);
+            // a is the same we have, this one can be discarded.
+            let LineArgs {
+                b,
+                both_are_identity,
+                identity_or_inverse,
+            } = args;
+            let args = (both_are_identity, identity_or_inverse);
+            (args, b)
+        })
+        .unzip();
+
+    let slopes = slopes(a_xy, b);
+
+    let lines: Vec<SmallDivisor<C::FieldElement>> = line_args
+        .into_iter()
+        .zip(slopes)
+        .map(|(args, slope)| {
+            let [slope, intercept] = slope;
+            let (both_are_identity, identity_or_inverse) = args;
+            finish_line(slope, intercept, both_are_identity, identity_or_inverse)
+        })
+        .collect();
+    lines
 }
 
 /// Create a divisor interpolating the following points.
@@ -219,6 +422,7 @@ pub fn new_divisor<C: DivisorCurve>(
         None?;
     }
 
+    let mut all_lines = lines(points).into_iter();
     let points_len = points.len();
 
     let modulus = Divisor::compute_modulus(C::a(), C::b(), EVALS);
@@ -231,8 +435,7 @@ pub fn new_divisor<C: DivisorCurve>(
         // Draw the line between those points
         // These unwraps are branching on the length of the iterator, not violating the constant-time
         // priorites desired
-        let line = line::<C>(a, b.unwrap_or(-a));
-        let line: SmallDivisor<C::FieldElement> = poly_to_div(line);
+        let line = all_lines.next().unwrap();
         let line: Divisor<C::FieldElement> = Divisor::from_small(line, modulus.clone());
 
         divs.push((2, a + b.unwrap_or(C::identity()), line));
@@ -279,8 +482,8 @@ pub fn new_divisor<C: DivisorCurve>(
 
             // Merge the two divisors
             // line connecting both divisors
-            let line = line::<C>(a, b);
-            let line = poly_to_div(line);
+            let line = all_lines.next().unwrap();
+            /// TODO: this is already computed with the lines, reuse and avoid calls to to_xy.
             let denom = (C::to_xy(a).unwrap().0, C::to_xy(b).unwrap().0);
             let merged = Divisor::merge([a_div, b_div], line, denom);
             next_divs.push((points, a + b, merged));
