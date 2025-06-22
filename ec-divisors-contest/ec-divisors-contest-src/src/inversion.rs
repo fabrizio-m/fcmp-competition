@@ -3,7 +3,9 @@ use ff::Field;
 pub struct BatchInverse;
 
 impl BatchInverse {
-    fn accumulate<'a, F, I>(mut elems: I, space: Option<Vec<F>>) -> Vec<F>
+    /// Compute products required for the batch inversion.
+    /// Provide optional Vec to avoid allocating a new one.
+    pub fn products<'a, F, I>(mut elems: I, space: Option<Vec<F>>) -> Vec<F>
     where
         F: Field,
         I: Iterator<Item = &'a F>,
@@ -19,7 +21,9 @@ impl BatchInverse {
         products
     }
 
-    fn invert<'a, F, I>(mut elems: I, products: &[F])
+    /// Invert elements using the products computed, the iterator
+    /// must be in the reverse order of that one provided to `Self::products`
+    pub fn invert<'a, F, I>(mut elems: I, products: &[F])
     where
         F: Field,
         I: Iterator<Item = &'a mut F>,
@@ -49,7 +53,7 @@ impl BatchInverse {
     pub fn invert_slice<F: Field>(slice: &mut [F]) {
         let space: Vec<F> = Vec::with_capacity(slice.len());
         let elems = slice.iter();
-        let products = Self::accumulate(elems, Some(space));
+        let products = Self::products(elems, Some(space));
         let elems = slice.iter_mut().rev();
         Self::invert(elems, &products);
     }
