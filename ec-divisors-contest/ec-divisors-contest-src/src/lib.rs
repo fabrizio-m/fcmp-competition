@@ -8,14 +8,15 @@ use barycentric::Interpolator;
 use divisor::{Divisor, SmallDivisor};
 use inversion::BatchInverse;
 use std_shims::{vec, vec::Vec};
-
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, ConstantTimeGreater};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 mod barycentric;
 mod divisor;
+mod ec;
 mod inversion;
 mod sizes;
 
+pub use ec::{Curve, XyPoint};
 use group::{
     ff::{Field, PrimeField, PrimeFieldBits},
     Group,
