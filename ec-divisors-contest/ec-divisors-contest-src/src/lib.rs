@@ -95,6 +95,7 @@ pub trait DivisorCurve: Group + ConstantTimeEq + ConditionallySelectable + Zeroi
 /// Calculate the slope and intercept between two points.
 ///
 /// This function panics when `a @ infinity`, `b @ infinity`, `a == b`, or when `a == -b`.
+#[allow(dead_code)]
 pub(crate) fn slope_intercept<C: DivisorCurve>(a: C, b: C) -> (C::FieldElement, C::FieldElement) {
     let (ax, ay) = C::to_xy(a).unwrap();
     debug_assert_eq!(C::divisor_modulus().eval(ax, ay), C::FieldElement::ZERO);
@@ -156,6 +157,7 @@ fn slopes_and_denoms<C: DivisorCurve>(
 }
 
 // The line interpolating two points.
+#[allow(dead_code)]
 fn line<C: DivisorCurve>(a: C, b: C) -> Poly<C::FieldElement> {
     #[derive(Clone, Copy)]
     struct LinesRes<F: ConditionallySelectable> {
