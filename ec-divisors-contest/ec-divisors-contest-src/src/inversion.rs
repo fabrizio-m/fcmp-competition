@@ -1,4 +1,5 @@
 use ff::Field;
+use std_shims::vec::Vec;
 
 pub struct BatchInverse;
 

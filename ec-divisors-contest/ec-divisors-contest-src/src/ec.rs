@@ -4,6 +4,7 @@
 use crate::inversion::BatchInverse;
 use core::ops::Neg;
 use ff::Field;
+use std_shims::vec::Vec;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 use zeroize::Zeroize;
 
