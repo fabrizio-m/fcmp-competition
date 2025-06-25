@@ -2,20 +2,29 @@
 //! based on projective arithmetic.
 
 use crate::inversion::BatchInverse;
+use core::ops::Neg;
 use ff::Field;
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+use zeroize::Zeroize;
 
 /// Point for which batch conversion to Weierstrass (X,Y) is cheap.
 /// May and should be trivial for most curves.
 /// Curve params are provided in case they are not available as constants.
-pub trait XyPoint<F: Field>: Sized {
+pub trait XyPoint<F: Field>:
+    Sized + Clone + Copy + ConditionallySelectable + Neg<Output = Self> + ConstantTimeEq + Zeroize
+{
+    /// The identity.
+    const IDENTITY: Self;
     /// Create from affine point.
     fn from_affine(x: F, y: F) -> Self;
-    /// Just add, doesn't need to check for double.
-    fn add(x1: Self, x2: Self) -> Self;
+    /// Add.
+    fn add(x1: Self, x2: Self, curve: &Curve<F>) -> Self;
     /// Double.
     fn double(self, curve: &Curve<F>) -> Self;
     /// Efficient batch to_xy conversion.
     fn to_xy_batched(points: Vec<Self>) -> Vec<(F, F)>;
+    /// If this point is the identity.
+    fn is_identity(&self) -> Choice;
 }
 
 /// A point in projective coordinates
@@ -40,6 +49,41 @@ impl<F: Field> Projective<F> {
     }
 }
 
+impl<F: Field + Zeroize> Zeroize for Projective<F> {
+    fn zeroize(&mut self) {
+        let Self { x, y, z } = self;
+        x.zeroize();
+        y.zeroize();
+        z.zeroize();
+    }
+}
+
+impl<F: Field> ConstantTimeEq for Projective<F> {
+    fn ct_eq(&self, other: &Self) -> Choice {
+        let c1 = (self.x * other.z).ct_eq(&(other.x * self.z));
+        let c2 = (self.y * other.z).ct_eq(&(other.y * self.z));
+        c1 & c2
+    }
+}
+
+impl<F: Field> Neg for Projective<F> {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        let Self { x, y, z } = self;
+        let y = -y;
+        Self { x, y, z }
+    }
+}
+
+impl<F: Field> ConditionallySelectable for Projective<F> {
+    fn conditional_select(a: &Self, b: &Self, choice: subtle::Choice) -> Self {
+        let x = F::conditional_select(&a.x, &b.x, choice);
+        let y = F::conditional_select(&a.y, &b.y, choice);
+        let z = F::conditional_select(&a.z, &b.z, choice);
+        Projective { x, y, z }
+    }
+}
+
 /// Curve params x^3 + ax + b
 pub struct Curve<F> {
     /// A in x^3 + Ax + B
@@ -48,14 +92,22 @@ pub struct Curve<F> {
     pub b: F,
 }
 
-impl<F: Field> XyPoint<F> for Projective<F> {
+impl<F: Field + Zeroize> XyPoint<F> for Projective<F> {
+    const IDENTITY: Self = Projective {
+        x: F::ZERO,
+        y: F::ONE,
+        z: F::ZERO,
+    };
+
     fn from_affine(x: F, y: F) -> Self {
         let z = F::ONE;
         Self { x, y, z }
     }
 
     // based on 13.2.1.b of https://hyperelliptic.org/HEHCC
-    fn add(x1: Self, x2: Self) -> Self {
+    fn add(x1: Self, x2: Self, curve: &Curve<F>) -> Self {
+        let double = x1.double(curve);
+        let equals = x1.ct_eq(&x2);
         let (x1, y1, z1) = x1.coordinates();
         let (x2, y2, z2) = x2.coordinates();
         let a = y2 * z1 - y1 * z2;
@@ -68,8 +120,8 @@ impl<F: Field> XyPoint<F> for Projective<F> {
         let x = b * c;
         let y = a * (bb * x1 * z2 - c) - bbb * y1 * z2;
         let z = bbb * z1z2;
-
-        Projective { x, y, z }
+        let add = Projective { x, y, z };
+        Self::conditional_select(&add, &double, equals)
     }
 
     fn double(self, curve: &Curve<F>) -> Self {
@@ -102,6 +154,12 @@ impl<F: Field> XyPoint<F> for Projective<F> {
                 (x * z_inv, y * z_inv)
             })
             .collect()
+    }
+
+    fn is_identity(&self) -> Choice {
+        let x = self.x.ct_eq(&F::ZERO);
+        let z = self.z.ct_eq(&F::ZERO);
+        x & z
     }
 }
 
@@ -136,7 +194,7 @@ mod ed25519_test {
 
         let triple = doubled + point;
         // println!("3P = {:?}", to_xy(triple));
-        let triple_projective = Projective::add(doubled_projective, projective);
+        let triple_projective = Projective::add(doubled_projective, projective, &curve);
         // println!("3P = {:?}", triple_projective.to_affine_slow());
         assert_eq!(triple_projective.to_affine_slow(), to_xy(triple));
     }
