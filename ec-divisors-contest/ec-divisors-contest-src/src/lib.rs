@@ -473,21 +473,11 @@ pub fn new_divisor<C: DivisorCurve>(
     let modulus = Divisor::compute_modulus(C::a(), C::b(), EVALS);
     // Create the initial set of divisors
     let mut divs = vec![];
-    let mut iter = points.iter().copied();
-    while let Some(a) = iter.next() {
-        let b = iter.next();
 
-        // Draw the line between those points.
+    for _ in 0..(points_len / 2 + points_len % 2) {
         let line = all_lines.next().unwrap().0;
         let line: Divisor<C::FieldElement> = Divisor::from_small(line, modulus.clone());
-
-        let div_point = match b {
-            Some(b) => C::XyPoint::add(a, b, curve),
-            // to wrap the last point
-            None => a,
-        };
-
-        divs.push((2, div_point, line));
+        divs.push(line);
     }
 
     // Our Poly algorithm is leaky and will create an excessive amount of y x**j and x**j
@@ -525,9 +515,8 @@ pub fn new_divisor<C: DivisorCurve>(
             next_divs.push(divs.pop().unwrap());
         }
 
-        while let Some((a_points, a, a_div)) = divs.pop() {
-            let (b_points, b, b_div) = divs.pop().unwrap();
-            let points = a_points + b_points;
+        while let Some(a_div) = divs.pop() {
+            let b_div = divs.pop().unwrap();
 
             // Merge the two divisors
             // line connecting both divisors
@@ -535,14 +524,14 @@ pub fn new_divisor<C: DivisorCurve>(
             let Denom { ax, bx } = denom;
             let denom = (ax, bx);
             let merged = Divisor::merge([a_div, b_div], line, denom);
-            next_divs.push((points, C::XyPoint::add(a, b, curve), merged));
+            next_divs.push(merged);
         }
 
         divs = next_divs;
     }
 
     // Return the unified divisor
-    let divisor = divs.remove(0).2;
+    let divisor = divs.remove(0);
     let mut divisor = divisor_to_poly::<C>(divisor, interpolaror);
     trim(&mut divisor, points_len);
     Some(divisor)
