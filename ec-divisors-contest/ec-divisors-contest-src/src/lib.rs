@@ -768,7 +768,6 @@ impl<F: Zeroize + PrimeFieldBits> ScalarDecomposition<F> {
     pub fn scalar_mul_divisor<C: Zeroize + DivisorCurve<Scalar = F>>(
         &self,
         generator: C,
-        interpolator: &Interpolator<C::FieldElement>,
     ) -> Poly<C::FieldElement> {
         // 1 is used for the resulting point, NUM_BITS is used for the decomposition, and then we store
         // one additional index in a usize for the points we shouldn't write at all (hence the +2)
@@ -800,8 +799,13 @@ impl<F: Zeroize + PrimeFieldBits> ScalarDecomposition<F> {
             generator = generator.double(&curve);
         }
 
+        // Here we may want to construct one based on the number of points.
+        // Currently set tot `EVALS` which should be ideal for most curves and
+        // scalars.
+        let interpolator = precompute();
+
         // Create a divisor out of the points
-        let res = new_divisor::<C>(&divisor_points, interpolator, &curve).unwrap();
+        let res = new_divisor::<C>(&divisor_points, &interpolator, &curve).unwrap();
         divisor_points.zeroize();
         res
     }

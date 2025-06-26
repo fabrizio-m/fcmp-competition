@@ -44,9 +44,8 @@ pub fn run_bench_contest(
     point: &EdwardsPoint,
     scalar: &Scalar,
 ) -> (Poly<FieldElement>, ScalarDecomposition<Scalar>) {
-    let precomputation = precompute();
     let scalar = ScalarDecomposition::new(*scalar).unwrap();
-    (scalar.scalar_mul_divisor(*point, &precomputation), scalar)
+    (scalar.scalar_mul_divisor(*point), scalar)
 }
 
 // For error: no global memory allocator found but one is required; link to std or add `#[global_allocator]` to a static item that implements the GlobalAlloc trait
