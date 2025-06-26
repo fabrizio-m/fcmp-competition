@@ -68,9 +68,10 @@ impl<F: PrimeField> Divisor<F> {
     fn remove_diff(self, x1: F, x2: F) -> Self {
         assert_eq!(self.a.len(), self.b.len());
         let mut denominator = Vec::with_capacity(self.a.len());
-        for i in 0..self.a.len() {
-            let x = F::from(i as u64);
+        let mut x = F::ZERO;
+        for _ in 0..self.a.len() {
             denominator.push((x - x1) * (x - x2));
+            x += F::ONE;
         }
         let denominator = Evals {
             evals: denominator,
