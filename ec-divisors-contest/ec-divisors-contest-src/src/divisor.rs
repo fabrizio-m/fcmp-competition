@@ -3,6 +3,7 @@ use core::ops::{Div, Mul};
 use ff::PrimeField;
 use std_shims::alloc::rc::Rc;
 use std_shims::{vec, vec::Vec};
+use subtle::ConditionallySelectable;
 
 /// Divisor of form f(x,y) = A(x) - yB(x), with A and B
 /// represented as enough evaluations for their degree.
@@ -16,11 +17,24 @@ pub struct Divisor<F: PrimeField> {
 
 /// Represented as coefficients as it can be efficiently evaluated
 /// in O(n) additions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct SmallDivisor<F: PrimeField> {
     // (a,b) for ax + b
     a: (F, F),
     b: F,
+}
+
+impl<F> ConditionallySelectable for SmallDivisor<F>
+where
+    F: PrimeField + ConditionallySelectable,
+{
+    fn conditional_select(a: &Self, b: &Self, choice: subtle::Choice) -> Self {
+        let a0 = <_>::conditional_select(&a.a.0, &b.a.0, choice);
+        let a1 = <_>::conditional_select(&a.a.1, &b.a.1, choice);
+        let b = <_>::conditional_select(&a.b, &b.b, choice);
+        let a = (a0, a1);
+        SmallDivisor { a, b }
+    }
 }
 
 impl<F: PrimeField> Divisor<F> {
@@ -54,9 +68,10 @@ impl<F: PrimeField> Divisor<F> {
     fn remove_diff(self, x1: F, x2: F) -> Self {
         assert_eq!(self.a.len(), self.b.len());
         let mut denominator = Vec::with_capacity(self.a.len());
-        for i in 0..self.a.len() {
-            let x = F::from(i as u64);
+        let mut x = F::ZERO;
+        for _ in 0..self.a.len() {
             denominator.push((x - x1) * (x - x2));
+            x += F::ONE;
         }
         let denominator = Evals {
             evals: denominator,

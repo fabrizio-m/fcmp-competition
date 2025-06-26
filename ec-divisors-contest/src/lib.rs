@@ -26,8 +26,6 @@ pub fn check_init_ref(point: &EdwardsPoint, scalar: &Scalar) {
     let (_, _) = <EdwardsPoint as DivisorCurveRef>::to_xy(*point).unwrap();
 }
 
-type Pre = Precomp<FieldElement>;
-
 pub fn check_init_contest(point: &EdwardsPoint, scalar: &Scalar) {
     let scalar = ScalarDecomposition::new(*scalar).expect("failed scalar decomposition");
     let point = Zeroizing::new(*point * scalar.scalar());
@@ -45,10 +43,9 @@ pub fn run_bench_ref(
 pub fn run_bench_contest(
     point: &EdwardsPoint,
     scalar: &Scalar,
-    precomputation: &Pre,
 ) -> (Poly<FieldElement>, ScalarDecomposition<Scalar>) {
     let scalar = ScalarDecomposition::new(*scalar).unwrap();
-    (scalar.scalar_mul_divisor(*point, precomputation), scalar)
+    (scalar.scalar_mul_divisor(*point), scalar)
 }
 
 // For error: no global memory allocator found but one is required; link to std or add `#[global_allocator]` to a static item that implements the GlobalAlloc trait
@@ -164,7 +161,6 @@ pub extern "C" fn test_scalar_mul_divisor_ref() {
 pub extern "C" fn test_scalar_mul_divisor_contest() {
     core::hint::black_box(unsafe {
         let params = EC_DIVISORS_PARAMS.get().unwrap();
-        let precomputation = precompute();
-        run_bench_contest(&params.point, &params.scalar, &precomputation);
+        run_bench_contest(&params.point, &params.scalar);
     });
 }

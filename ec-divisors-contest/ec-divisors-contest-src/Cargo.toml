@@ -22,7 +22,7 @@ subtle = { version = "2", default-features = false }
 ff = { version = "0.13", default-features = false, features = ["bits"] }
 group = { version = "0.13", default-features = false }
 
-hex = { version = "0.4", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
 dalek-ff-group = { git = "https://github.com/kayabaNerve/fcmp-plus-plus", default-features = false }
 pasta_curves = { version = "0.5", git = "https://github.com/kayabaNerve/pasta_curves.git", default-features = false, features = ["bits", "alloc"], optional = true }
 

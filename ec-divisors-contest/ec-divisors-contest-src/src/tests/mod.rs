@@ -1,3 +1,4 @@
+use crate::XyPoint;
 use crate::{barycentric::Interpolator, new_divisor, precompute, DivisorCurve, Poly};
 use dalek_ff_group::EdwardsPoint;
 use group::{ff::Field, Group};
@@ -8,10 +9,24 @@ mod poly;
 
 type Precomp<C> = Interpolator<<C as DivisorCurve>::FieldElement>;
 
+fn points_xy<C: DivisorCurve>(points: &[C]) -> Vec<C::XyPoint> {
+    points
+        .iter()
+        .cloned()
+        .map(|p| {
+            let (x, y) = C::to_xy(p).unwrap();
+            C::XyPoint::from_affine(x, y)
+        })
+        .collect()
+}
+
 // Equation 4 in the security proofs
 fn check_divisor<C: DivisorCurve>(points: Vec<C>, precomputation: &Precomp<C>) {
+    let points_xy = points_xy(&points);
+    let curve = C::curve();
+
     // Create the divisor
-    let divisor = new_divisor::<C>(&points, precomputation).unwrap();
+    let divisor = new_divisor::<C>(&points_xy, precomputation, &curve).unwrap();
     let eval = |c| {
         let (x, y) = C::to_xy(c).unwrap();
         divisor.eval(x, y)
@@ -33,6 +48,7 @@ fn check_divisor<C: DivisorCurve>(points: Vec<C>, precomputation: &Precomp<C>) {
 
 fn test_divisor<C: DivisorCurve>() {
     let precomputation = precompute();
+    let curve = C::curve();
     for i in 1..=255 {
         println!("Test iteration {i}");
 
@@ -47,8 +63,9 @@ fn test_divisor<C: DivisorCurve>() {
         // Perform the original check
         check_divisor(points.clone(), &precomputation);
 
+        let points_xy = points_xy(&points);
         // Create the divisor
-        let divisor = new_divisor::<C>(&points, &precomputation).unwrap();
+        let divisor = new_divisor::<C>(&points_xy, &precomputation, &curve).unwrap();
 
         // For a divisor interpolating 256 points, as one does when interpreting a 255-bit discrete log
         // with the result of its scalar multiplication against a fixed generator, the lengths of the
