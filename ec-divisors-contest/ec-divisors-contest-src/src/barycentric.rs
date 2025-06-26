@@ -154,7 +154,7 @@ fn interpolation() {
     let evals: Vec<Fp> = evals.into_iter().map(Fp::from).collect();
 
     let weights = Weights::new(5);
-    let interpolator = Interpolator::new(5);
+    let interpolator = Interpolator::new(4);
     println!("weights: \n {:#?}", weights.weights);
 
     let coeffs = interpolator.interpolate(evals.clone());
