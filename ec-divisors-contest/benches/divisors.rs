@@ -1,10 +1,9 @@
-use ec_divisors_contest::{check_init_contest, check_init_ref, run_bench_contest, run_bench_ref};
-
 use ciphersuite::{
     group::{ff::Field, Group},
     Ciphersuite, Ed25519,
 };
 use dalek_ff_group::EdwardsPoint;
+use ec_divisors_contest::{check_init_contest, check_init_ref, run_bench_contest, run_bench_ref};
 use rand_core::OsRng;
 
 use criterion::{criterion_group, criterion_main, Criterion};
