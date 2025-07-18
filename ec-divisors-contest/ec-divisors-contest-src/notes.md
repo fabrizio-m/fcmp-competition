@@ -25,19 +25,19 @@ Some additional optimizations which I didn't implement are also mentioned.
 Divisors can be represented as 2 univariate polynomials $a$ and $b$ such that:
 $$f(x,y) = a(x) - yb(x)$$  
 That's also already the form used for ECIP, then multiplying divisors is just
-univariate polynomial arithmetic.
-$$f_1(x,y) = a_1(x) - yb_1(x)$$
-$$f_2(x,y) = a_2(x) - yb_2(x)$$
-$$ f_1 f_2 = (a_1 - yb_1)(a_2 - yb_2) $$
-$$ f_1 f_2 = a_1(a_2 - yb_2) - yb_1(a_2 - yb_2)$$
-$$ f_1 f_2 = a_1a_2 - ya_1b_2 - yb_1a_2 + y^2b_1b_2$$
-$$ f_1 f_2 = a_1a_2 - y(a_1b_2 + b_1a_2) + y^2b_1b_2$$
+univariate polynomial arithmetic.  
+$$f_1(x,y) = a_1(x) - yb_1(x)$$  
+$$f_2(x,y) = a_2(x) - yb_2(x)$$  
+$$f_1 f_2 = (a_1 - yb_1)(a_2 - yb_2) $$  
+$$f_1 f_2 = a_1(a_2 - yb_2) - yb_1(a_2 - yb_2)$$  
+$$f_1 f_2 = a_1a_2 - ya_1b_2 - yb_1a_2 + y^2b_1b_2$$  
+$$f_1 f_2 = a_1a_2 - y(a_1b_2 + b_1a_2) + y^2b_1b_2$$  
 
 Reduction is done by replacing $y^2$ by $x^3+Ax+B$ (from the curve equation).
-Returning to the original $a - yb$ form.
-$$ f_1 f_2 = a_1a_2 - y(a_1b_2 + b_1a_2) + (x^3+Ax+B)b_1b_2$$
-$$ f_1 f_2 = (a_1a_2 + (x^3+Ax+B)b_1b_2) - y(a_1b_2 + b_1a_2) $$
-$$ f_1 f_2 = a' - yb' $$
+Returning to the original $a - yb$ form.  
+$$f_1 f_2 = a_1a_2 - y(a_1b_2 + b_1a_2) + (x^3+Ax+B)b_1b_2$$  
+$$f_1 f_2 = (a_1a_2 + (x^3+Ax+B)b_1b_2) - y(a_1b_2 + b_1a_2) $$  
+$$f_1 f_2 = a' - yb' $$  
 
 ## Polynomials as evaluations
 
@@ -63,7 +63,7 @@ These are the operations of switching between evaluations and coefficients.
 - The general algorithm for evaluating a degree $d$ polynomial over $n$ points
 is $O(nd)$ multiplications and additions.
 - Evaluating a degree 1 polynomial is the same, but due to $d=1$ it can be done
-in $O(n).
+in $O(n)$.
 - If your domain is $D = {0..n}$, then evaluation of a degree $1$ polynomial
 can be done with only additions, as $p(i+1) = p(i) + c_1$ for the only degree 
 1 coefficient $c_1$.
@@ -108,7 +108,7 @@ with little cost. So far, this is the same as the original implementation.
 - Now, the lines are converted into the representation described above, the
 divisor is $a(x) - yb(x)$, with $a$ and $b$ degree 1.
 - Both $a$ and $b$ are converted into evaluations and remain that way until
-the end. Being degree 1, it can be done in just $O(n). They are all evaluated
+the end. Being degree 1, it can be done in just $O(n)$. They are all evaluated
 in a domain big enough for the final result, which I set to 130, enough for
 the typical 256 bits field.
 - Then the algorithm remains mostly the same, as I wanted to get the exact
@@ -154,7 +154,7 @@ As an example, another option would be to evaluate lines over $n/2$ points,
 this would make divisor arithmetic around $O({n/2}^2)$, but add 2 
 intermediate $O({n/2}^2)$ interpolations/evaluations (you can go from
 evaluations over a smaller domain to a bigger one without interpolation,
-but still $O(n^2)$).  
+but still $O(n^2)$ ).  
 My approach was just the simplest, but a different combination may end up with
 a better runtime overall.
 - Changing the loop: I kept the loop the same to be sure I was ending up with
